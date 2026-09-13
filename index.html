@@ -207,93 +207,26 @@
   </footer>
 </div>
 
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <script>
 (function(){
   "use strict";
 
   // ============================================================
-  // GITHUB COMO BANCO (arquivo JSON no proprio repositorio)
-  // Token restrito so a este repositorio, permissao Contents: R/W
+  // FIREBASE (banco compartilhado -- projeto leitor-solar-renac)
   // ============================================================
-  const GH_OWNER = "guimel95";
-  const GH_REPO = "leitor-solar-renac";
-  const GH_TOKEN = "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";
-  const GH_PATH = "data/dados.json";
-  const GH_API = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_PATH}`;
-
-  function b64ParaUtf8(b64){
-    return decodeURIComponent(escape(atob(b64.replace(/\n/g, ""))));
-  }
-  function utf8ParaB64(str){
-    return btoa(unescape(encodeURIComponent(str)));
-  }
-
-  const GH_TIMEOUT_MS = 12000;
-
-  async function fetchComLimite(url, opts){
-    const ctrl = new AbortController();
-    const timeoutId = setTimeout(() => ctrl.abort(), GH_TIMEOUT_MS);
-    try {
-      return await fetch(url, { ...opts, signal: ctrl.signal });
-    } catch(e){
-      if (e.name === "AbortError") throw new Error("GITHUB_DEMOROU");
-      throw new Error("REDE: " + e.message);
-    } finally {
-      clearTimeout(timeoutId);
-    }
-  }
-
-  async function ghLer(){
-    const r = await fetchComLimite(GH_API, {
-      headers: { Authorization: `Bearer ${GH_TOKEN}`, Accept: "application/vnd.github+json" },
-      cache: "no-store",
-    });
-    if (r.status === 404) return { dados: { leituras: [], perfil: {}, fechamentos: {} }, sha: null };
-    if (!r.ok) throw new Error("Falha ao ler dados (HTTP " + r.status + ")");
-    const json = await r.json();
-    const dados = JSON.parse(b64ParaUtf8(json.content));
-    dados.leituras = dados.leituras || [];
-    dados.perfil = dados.perfil || {};
-    dados.fechamentos = dados.fechamentos || {};
-    return { dados, sha: json.sha };
-  }
-
-  async function ghEscrever(dados, sha, mensagem){
-    const body = {
-      message: mensagem,
-      content: utf8ParaB64(JSON.stringify(dados, null, 2)),
-      branch: "main",
-    };
-    if (sha) body.sha = sha;
-    const r = await fetchComLimite(GH_API, {
-      method: "PUT",
-      headers: {
-        Authorization: `Bearer ${GH_TOKEN}`,
-        Accept: "application/vnd.github+json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
-    if (r.status === 409) throw new Error("CONFLITO");
-    if (!r.ok) throw new Error("Falha ao salvar (HTTP " + r.status + ")");
-    return await r.json();
-  }
-
-  async function ghAtualizar(mutador, mensagem){
-    for (let tentativa = 0; tentativa < 3; tentativa++){
-      setStatus("Lendo dados atuais do GitHub" + (tentativa ? " (tentativa " + (tentativa+1) + ")..." : "..."));
-      const { dados, sha } = await ghLer();
-      mutador(dados);
-      setStatus("Gravando no GitHub...");
-      try {
-        await ghEscrever(dados, sha, mensagem);
-        return;
-      } catch (e){
-        if (e.message === "CONFLITO" && tentativa < 2) continue;
-        throw e;
-      }
-    }
-  }
+  const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyDzsdLJ4GsslzSmLkcvot6REU_R2vv4Ik",
+    authDomain: "leitor-solar-renac.firebaseapp.com",
+    projectId: "leitor-solar-renac",
+    storageBucket: "leitor-solar-renac.firebasestorage.app",
+    messagingSenderId: "755981630400",
+    appId: "1:755981630400:web:bea22f0aaf447e2a0fe625",
+    measurementId: "G-Z6CKY5WV6K"
+  };
+  firebase.initializeApp(FIREBASE_CONFIG);
+  const db = firebase.firestore();
 
   // ============================================================
   // PROTOCOLO BLE (mesmo validado no monitor.py)
@@ -469,18 +402,34 @@
   }
 
   // ============================================================
-  // LEITURAS / FEED DE HOJE
+  // BANCO DE DADOS (Firestore, compartilhado entre todo mundo)
   // ============================================================
 
   async function salvarLeitura(metrics, quem, dia, hora){
-    await ghAtualizar((dados) => {
-      dados.leituras.push({ dia, hora, quem: quem || "", ...metrics });
-      if (metrics.potencia_w > 50){
-        const minutosAgora = horaParaMinutos(hora);
-        dados.perfil.nascer_min = Math.min(dados.perfil.nascer_min ?? 360, minutosAgora);
-        dados.perfil.poente_max = Math.max(dados.perfil.poente_max ?? 1140, minutosAgora);
-      }
-    }, `Leitura ${dia} ${hora}${quem ? " (" + quem + ")" : ""}`);
+    await db.collection("dias").doc(dia).collection("leituras").add({
+      hora, ...metrics, quem: quem || "",
+    });
+
+    if (metrics.potencia_w > 50){
+      const minutosAgora = horaParaMinutos(hora);
+      const perfilRef = db.collection("config").doc("perfil");
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(perfilRef);
+        const atual = snap.exists ? snap.data() : {};
+        const novoNascer = Math.min(atual.nascer_min != null ? atual.nascer_min : 360, minutosAgora);
+        const novoPoente = Math.max(atual.poente_max != null ? atual.poente_max : 1140, minutosAgora);
+        tx.set(perfilRef, { nascer_min: novoNascer, poente_max: novoPoente });
+      });
+    }
+  }
+
+  async function carregarPerfil(){
+    const snap = await db.collection("config").doc("perfil").get();
+    if (snap.exists){
+      const d = snap.data();
+      return { nascer_min: d.nascer_min != null ? d.nascer_min : 360, poente_max: d.poente_max != null ? d.poente_max : 1140 };
+    }
+    return { nascer_min: 360, poente_max: 1140 };
   }
 
   function renderizarFeedEEstimativa(leituras, perfil){
@@ -506,63 +455,55 @@
     });
 
     const pontos = leituras.map(l => ({ minutos: horaParaMinutos(l.hora), potencia_w: l.potencia_w }));
-    const estimativa = estimarEnergiaDiaKwh(pontos, perfil.nascer_min ?? 360, perfil.poente_max ?? 1140);
+    const estimativa = estimarEnergiaDiaKwh(pontos, perfil.nascer_min, perfil.poente_max);
     kwhEl.innerHTML = (estimativa != null ? estimativa.toFixed(2) : "&mdash;") + "<small> kWh</small>";
     detalheEl.textContent = leituras.length + (leituras.length === 1 ? " leitura hoje" : " leituras hoje");
     avisoEl.hidden = false;
   }
 
-  async function atualizarFeedHoje(){
-    try {
-      const { dados } = await ghLer();
-      const dia = hojeISO();
-      const leituras = dados.leituras
-        .filter(l => l.dia === dia)
-        .sort((a,b) => a.hora.localeCompare(b.hora));
-      renderizarFeedEEstimativa(leituras, dados.perfil);
-    } catch(e){ console.error("erro atualizando feed de hoje:", e); }
+  let unsubHoje = null;
+  function assinarLeiturasHoje(){
+    if (unsubHoje) unsubHoje();
+    const dia = hojeISO();
+    unsubHoje = db.collection("dias").doc(dia).collection("leituras").orderBy("hora", "asc").limit(200)
+      .onSnapshot(async (snap) => {
+        const leituras = snap.docs.map(d => d.data());
+        const perfil = await carregarPerfil();
+        renderizarFeedEEstimativa(leituras, perfil);
+      }, (err) => console.error("erro assinando leituras de hoje:", err));
   }
-
-  function iniciarAtualizacaoPeriodica(){
-    atualizarFeedHoje();
-    setInterval(atualizarFeedHoje, 20000);
-  }
-
-  // ============================================================
-  // FECHAMENTO MENSAL
-  // ============================================================
 
   async function salvarFechamento(mes, kwh, valor, obs){
-    await ghAtualizar((dados) => {
-      dados.fechamentos[mes] = {
-        kwh_concessionaria: kwh, valor_reais: valor, observacao: obs || "",
-        atualizado_em: new Date().toISOString(),
-      };
-    }, `Fechamento ${mes}`);
+    await db.collection("fechamentos").doc(mes).set({
+      kwh_concessionaria: kwh, valor_reais: valor, observacao: obs || "",
+      atualizado_em: new Date().toISOString(),
+    });
   }
 
   async function carregarComparativoMensal(){
-    const { dados } = await ghLer();
-    const perfil = dados.perfil;
-
-    const porDia = {};
-    for (const l of dados.leituras){
-      (porDia[l.dia] = porDia[l.dia] || []).push(l);
-    }
+    const diasSnap = await db.collection("dias").limit(400).get();
+    const fechSnap = await db.collection("fechamentos").limit(60).get();
+    const perfil = await carregarPerfil();
 
     const nossoPorMes = {};
-    for (const dia in porDia){
+    for (const doc of diasSnap.docs){
+      const dia = doc.id;
       const mes = dia.slice(0,7);
-      const leituras = porDia[dia].slice().sort((a,b) => a.hora.localeCompare(b.hora));
+      const leiturasSnap = await db.collection("dias").doc(dia).collection("leituras").orderBy("hora","asc").limit(200).get();
+      const leituras = leiturasSnap.docs.map(d => d.data());
+      if (!leituras.length) continue;
       const pontos = leituras.map(l => ({ minutos: horaParaMinutos(l.hora), potencia_w: l.potencia_w }));
-      const kwhDia = estimarEnergiaDiaKwh(pontos, perfil.nascer_min ?? 360, perfil.poente_max ?? 1140) || 0;
+      const kwhDia = estimarEnergiaDiaKwh(pontos, perfil.nascer_min, perfil.poente_max) || 0;
       nossoPorMes[mes] = (nossoPorMes[mes] || 0) + kwhDia;
     }
 
-    const todosMeses = Array.from(new Set([...Object.keys(nossoPorMes), ...Object.keys(dados.fechamentos)])).sort().reverse();
+    const fechamentos = {};
+    for (const doc of fechSnap.docs) fechamentos[doc.id] = doc.data();
+
+    const todosMeses = Array.from(new Set([...Object.keys(nossoPorMes), ...Object.keys(fechamentos)])).sort().reverse();
     return todosMeses.map(mes => {
       const nosso = nossoPorMes[mes] || 0;
-      const fech = dados.fechamentos[mes];
+      const fech = fechamentos[mes];
       const conc = fech ? fech.kwh_concessionaria : null;
       return {
         mes, nosso: Math.round(nosso*100)/100, conc,
@@ -638,10 +579,9 @@
       const nome = document.getElementById("campo-nome").value.trim();
       try { localStorage.setItem("leitor_solar_nome", nome); } catch(e){}
 
-      setStatus("Salvando no GitHub...");
+      setStatus("Salvando...");
       await salvarLeitura(metrics, nome, hojeISO(), horaAgora());
       setStatus("Leitura salva com sucesso!", "ok");
-      atualizarFeedHoje();
     } catch (e) {
       console.error(e);
       let msg = "Erro ao ler: " + (e && e.message ? e.message : e);
@@ -693,7 +633,7 @@
       setStatus("Seu navegador nao suporta Bluetooth Web. Funciona no Chrome do Android.", "erro");
     }
 
-    iniciarAtualizacaoPeriodica();
+    assinarLeiturasHoje();
   }
 
   if (document.readyState === "loading"){
