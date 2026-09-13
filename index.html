@@ -1,0 +1,657 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Leitor Solar RENAC</title>
+<style>
+  :root{
+    --bg:#0a0f1a; --surface:#111a2b; --surface-2:#16223a;
+    --ink:#eef2f8; --ink-soft:#8b98b0; --ink-faint:#5c6a84;
+    --line:#1f2c45;
+    --sun:#f5a623; --sun-ink:#1a1204; --sun-soft:#3a2c14;
+    --leaf:#3ddc84; --leaf-soft:#123322;
+    --bad:#f2555c; --bad-soft:#3a1418;
+    --info:#5fb3e8; --info-soft:#122c3a;
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){
+      --bg:#f4f6f5; --surface:#ffffff; --surface-2:#eef1f0;
+      --ink:#11181a; --ink-soft:#4c5b5d; --ink-faint:#7c8b8c;
+      --line:#d7dfdc;
+      --sun:#8a6412; --sun-ink:#ffffff; --sun-soft:#efe3c8;
+      --leaf:#2f7d52; --leaf-soft:#dcefe3;
+      --bad:#a8402f; --bad-soft:#f3e0db;
+      --info:#3d6a8a; --info-soft:#dde9f0;
+    }
+  }
+  :root[data-theme="light"]{
+    --bg:#f4f6f5; --surface:#ffffff; --surface-2:#eef1f0;
+    --ink:#11181a; --ink-soft:#4c5b5d; --ink-faint:#7c8b8c;
+    --line:#d7dfdc;
+    --sun:#8a6412; --sun-ink:#ffffff; --sun-soft:#efe3c8;
+    --leaf:#2f7d52; --leaf-soft:#dcefe3;
+    --bad:#a8402f; --bad-soft:#f3e0db;
+    --info:#3d6a8a; --info-soft:#dde9f0;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    font-variant-numeric:tabular-nums;
+    padding:20px 16px 48px;
+  }
+  .wrap{max-width:480px;margin:0 auto}
+  header{margin-bottom:18px}
+  .eyebrow{font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--sun);font-weight:700;margin:0 0 4px}
+  h1{font-size:1.25rem;margin:0 0 4px;font-weight:700}
+  .sub{font-size:.85rem;color:var(--ink-soft);margin:0}
+
+  nav{display:flex;gap:8px;margin:16px 0 20px}
+  nav button{flex:1;background:var(--surface);border:1px solid var(--line);color:var(--ink-soft);
+             padding:10px;border-radius:10px;font-size:.85rem;font-weight:600;cursor:pointer}
+  nav button.ativo{background:var(--sun-soft);color:var(--sun);border-color:var(--sun)}
+
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 18px;margin-bottom:14px}
+  .card h2{font-size:.9rem;margin:0 0 12px;color:var(--ink)}
+
+  .btn-ler{width:100%;background:var(--sun);color:var(--sun-ink);border:none;border-radius:14px;
+           padding:18px;font-size:1.05rem;font-weight:800;cursor:pointer;display:flex;align-items:center;
+           justify-content:center;gap:10px}
+  .btn-ler:disabled{opacity:.6;cursor:default}
+  .btn-ler .spin{width:16px;height:16px;border:2.5px solid rgba(0,0,0,.25);border-top-color:currentColor;
+                 border-radius:50%;animation:girar 0.8s linear infinite;display:none}
+  .btn-ler.carregando .spin{display:inline-block}
+  @keyframes girar{to{transform:rotate(360deg)}}
+  @media (prefers-reduced-motion: reduce){ .btn-ler .spin{animation:none} }
+
+  .campo-nome{width:100%;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;
+              padding:10px 12px;color:var(--ink);font-size:.9rem;margin-bottom:10px}
+
+  .status-linha{font-size:.85rem;color:var(--ink-soft);margin-top:12px;text-align:center;min-height:1.2em}
+  .status-linha.erro{color:var(--bad)}
+  .status-linha.ok{color:var(--leaf)}
+
+  .resultado{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+  .resultado .num{background:var(--surface-2);border-radius:12px;padding:12px 14px}
+  .resultado .num .v{font-size:1.3rem;font-weight:700;color:var(--sun)}
+  .resultado .num .r{font-size:.72rem;color:var(--ink-faint);margin-top:2px}
+
+  .hero-kwh{text-align:center;padding:6px 0 4px}
+  .hero-kwh .v{font-size:2.6rem;font-weight:800;color:var(--leaf);line-height:1}
+  .hero-kwh .v small{font-size:1.1rem;font-weight:600;color:var(--ink-soft)}
+  .hero-kwh .r{font-size:.8rem;color:var(--ink-soft);margin-top:4px}
+  .aviso-estimativa{background:var(--info-soft);color:var(--info);border-radius:10px;padding:9px 12px;
+                    font-size:.76rem;margin-top:10px;line-height:1.4}
+
+  .feed-item{display:flex;justify-content:space-between;align-items:baseline;padding:9px 0;
+             border-bottom:1px solid var(--line);font-size:.85rem}
+  .feed-item:last-child{border-bottom:none}
+  .feed-item .quem{color:var(--ink-soft);font-size:.78rem}
+  .feed-item .pot{font-weight:700}
+  .vazio{color:var(--ink-faint);font-size:.85rem;padding:8px 0}
+
+  label{display:block;font-size:.76rem;color:var(--ink-faint);margin-bottom:4px}
+  input[type=month],input[type=number],input[type=text]{
+    width:100%;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;
+    padding:9px 11px;color:var(--ink);font-size:.92rem;margin-bottom:12px}
+  input:focus{outline:2px solid var(--sun)}
+  .linha2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .btn-salvar{background:var(--sun);color:var(--sun-ink);border:none;border-radius:10px;
+              padding:11px 16px;font-size:.88rem;font-weight:700;cursor:pointer;width:100%}
+
+  table{width:100%;border-collapse:collapse;font-size:.82rem}
+  th,td{text-align:left;padding:7px 4px;border-bottom:1px solid var(--line)}
+  th{color:var(--ink-faint);font-weight:600;font-size:.66rem;text-transform:uppercase}
+  .tablewrap{overflow-x:auto}
+  .dif-ok{color:var(--leaf)} .dif-alta{color:var(--bad)}
+
+  footer{text-align:center;font-size:.74rem;color:var(--ink-faint);margin-top:24px;line-height:1.5}
+  .badge-android{display:inline-block;background:var(--surface-2);color:var(--ink-faint);
+                 font-size:.7rem;padding:2px 8px;border-radius:999px;margin-top:6px}
+  [hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Leitor Solar &middot; Bluetooth compartilhado</p>
+    <h1>Inversor RENAC NAC6K-DS</h1>
+    <p class="sub">Qualquer pessoa, qualquer celular Android, perto do inversor. Sem instalar nada.</p>
+  </header>
+
+  <nav>
+    <button id="nav-ler" class="ativo">Ler agora</button>
+    <button id="nav-mes">Fechamento mensal</button>
+  </nav>
+
+  <!-- ===================== TELA: LER AGORA ===================== -->
+  <section id="tela-ler">
+
+    <div class="card">
+      <h2>Nova leitura</h2>
+      <input type="text" id="campo-nome" class="campo-nome" placeholder="Seu nome (opcional, aparece no historico)">
+      <button id="btn-ler" class="btn-ler">
+        <span class="spin"></span>
+        <span id="btn-ler-texto">&#128246; Conectar e ler agora</span>
+      </button>
+      <div id="status-linha" class="status-linha"></div>
+
+      <div id="resultado" class="resultado" hidden>
+        <div class="num"><div class="v" id="r-potencia">&mdash;</div><div class="r">Potencia (W)</div></div>
+        <div class="num"><div class="v" id="r-tensao">&mdash;</div><div class="r">Tensao AC (V)</div></div>
+        <div class="num"><div class="v" id="r-corrente">&mdash;</div><div class="r">Corrente AC (A)</div></div>
+        <div class="num"><div class="v" id="r-pv1">&mdash;</div><div class="r">Potencia PV1 (W)</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Estimativa de hoje</h2>
+      <div class="hero-kwh">
+        <div class="v" id="hoje-kwh">&mdash;<small> kWh</small></div>
+        <div class="r" id="hoje-detalhe">ainda sem leitura hoje</div>
+      </div>
+      <div class="aviso-estimativa" id="aviso-estimativa" hidden>
+        Estimativa calculada a partir das leituras do dia + um modelo da curva solar
+        (sobe de manha, pico ao meio-dia, desce a tarde). Quanto mais leituras ao longo
+        do dia, mais precisa fica.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Leituras de hoje</h2>
+      <div id="feed-hoje"><p class="vazio">Nenhuma leitura ainda hoje.</p></div>
+    </div>
+
+  </section>
+
+  <!-- ===================== TELA: FECHAMENTO MENSAL ===================== -->
+  <section id="tela-mes" hidden>
+
+    <div class="card">
+      <h2>Registrar leitura da conta de luz</h2>
+      <label for="f-mes">Mes de referencia</label>
+      <input type="month" id="f-mes">
+      <div class="linha2">
+        <div>
+          <label for="f-kwh">kWh da concessionaria</label>
+          <input type="number" step="0.01" id="f-kwh" placeholder="ex: 320.5">
+        </div>
+        <div>
+          <label for="f-valor">Valor da conta (R$)</label>
+          <input type="number" step="0.01" id="f-valor" placeholder="ex: 45.90">
+        </div>
+      </div>
+      <label for="f-obs">Observacao (opcional)</label>
+      <input type="text" id="f-obs" placeholder="ex: taxa minima">
+      <button class="btn-salvar" id="btn-salvar-mes">Salvar fechamento</button>
+      <div class="status-linha" id="status-mes"></div>
+    </div>
+
+    <div class="card">
+      <h2>Comparativo mes a mes</h2>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Mes</th><th>Nosso</th><th>Conces.</th><th>Diferenca</th></tr></thead>
+          <tbody id="tabela-meses"><tr><td colspan="4" class="vazio">Carregando...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+  </section>
+
+  <footer>
+    Funciona no Chrome do Android, perto o suficiente do inversor pra Bluetooth (uns 10-15m).<br>
+    iPhone nao suporta Bluetooth em pagina web &mdash; nesse caso, use o app RenacSEC direto.
+    <div class="badge-android">Dados compartilhados entre todo mundo que usa este link</div>
+  </footer>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  // ============================================================
+  // FIREBASE (banco compartilhado -- substitui o db do Claude artifact)
+  // ============================================================
+  const FIREBASE_CONFIG = {
+    apiKey: "COLOQUE_AQUI",
+    authDomain: "COLOQUE_AQUI.firebaseapp.com",
+    projectId: "COLOQUE_AQUI",
+    storageBucket: "COLOQUE_AQUI.appspot.com",
+    messagingSenderId: "COLOQUE_AQUI",
+    appId: "COLOQUE_AQUI"
+  };
+  let db = null;
+  try {
+    firebase.initializeApp(FIREBASE_CONFIG);
+    db = firebase.firestore();
+  } catch (e) {
+    console.error("Firebase nao configurado ainda:", e);
+  }
+
+  // ============================================================
+  // PROTOCOLO BLE (mesmo validado no monitor.py)
+  // ============================================================
+  const DEVICE_NAME_PREFIX = "HF-LPT";
+  const SERVICE_UUID = "0000fee7-0000-1000-8000-00805f9b34fb";
+  const WRITE_UUID = "0000fec7-0000-1000-8000-00805f9b34fb";
+  const INDICATE_UUID = "0000fed6-0000-1000-8000-00805f9b34fb";
+  const REQUEST_FRAME = hexParaBytes("0165042904001b29cc00102a3000112ee00006ffd7");
+
+  function hexParaBytes(hex){
+    const out = new Uint8Array(hex.length/2);
+    for (let i=0;i<hex.length;i+=2) out[i/2] = parseInt(hex.substr(i,2),16);
+    return out;
+  }
+
+  function crc16Modbus(bytes){
+    let crc = 0xFFFF;
+    for (let i=0;i<bytes.length;i++){
+      crc ^= bytes[i];
+      for (let b=0;b<8;b++){
+        crc = (crc & 1) ? ((crc >>> 1) ^ 0xA001) : (crc >>> 1);
+      }
+    }
+    return crc & 0xFFFF;
+  }
+
+  function decodificarResposta(bytes){
+    if (bytes.length < 5) return null;
+    const body = bytes.slice(0, bytes.length-2);
+    const tail = bytes.slice(bytes.length-2);
+    const crcCalc = crc16Modbus(body);
+    if ((crcCalc & 0xFF) !== tail[0] || ((crcCalc>>8)&0xFF) !== tail[1]) return null;
+
+    const numFaixas = bytes[2];
+    let offset = 3;
+    const regs = {};
+    for (let f=0; f<numFaixas; f++){
+      const start = (bytes[offset]<<8) | bytes[offset+1];
+      const byteCount = bytes[offset+2];
+      offset += 3;
+      for (let i=0;i<byteCount;i+=2){
+        const val = (bytes[offset+i]<<8) | bytes[offset+i+1];
+        regs[start + i/2] = val;
+      }
+      offset += byteCount;
+    }
+    return regs;
+  }
+
+  function extrairMetricas(regs){
+    return {
+      tensao_v: (regs[10518]||0)/10,
+      corrente_a: (regs[10519]||0)/10,
+      frequencia_hz: (regs[10520]||0)/100,
+      potencia_w: regs[10514]||0,
+      estado: regs[10509],
+      pv1_tensao_v: (regs[10801]||0)/10,
+      pv1_corrente_a: (regs[10802]||0)/10,
+      pv1_potencia_w: regs[10804]||0,
+    };
+  }
+
+  async function lerInversorUmaVez(){
+    if (!navigator.bluetooth){
+      throw new Error("SEM_BLUETOOTH");
+    }
+    const device = await navigator.bluetooth.requestDevice({
+      filters: [{ namePrefix: DEVICE_NAME_PREFIX }],
+      optionalServices: [SERVICE_UUID],
+    });
+    const server = await device.gatt.connect();
+    try {
+      const service = await server.getPrimaryService(SERVICE_UUID);
+      const writeChar = await service.getCharacteristic(WRITE_UUID);
+      const notifyChar = await service.getCharacteristic(INDICATE_UUID);
+
+      const resposta = await new Promise(async (resolve, reject) => {
+        const timeoutId = setTimeout(() => reject(new Error("TIMEOUT")), 10000);
+        function onChange(ev){
+          clearTimeout(timeoutId);
+          notifyChar.removeEventListener("characteristicvaluechanged", onChange);
+          const dv = ev.target.value;
+          const bytes = new Uint8Array(dv.buffer);
+          resolve(bytes);
+        }
+        notifyChar.addEventListener("characteristicvaluechanged", onChange);
+        try {
+          await notifyChar.startNotifications();
+          await writeChar.writeValue(REQUEST_FRAME);
+        } catch (e) {
+          clearTimeout(timeoutId);
+          reject(e);
+        }
+      });
+
+      const regs = decodificarResposta(resposta);
+      if (!regs) throw new Error("CRC_INVALIDO");
+      return extrairMetricas(regs);
+    } finally {
+      try { server.disconnect(); } catch(e){}
+    }
+  }
+
+  // ============================================================
+  // MODELO DE ESTIMATIVA (curva solar calibrada pelas leituras do dia)
+  // ============================================================
+
+  function amplitudeSino(potenciaW, minutos, nascerMin, poenteMax){
+    const frac = (minutos - nascerMin) / (poenteMax - nascerMin);
+    const fracClamp = Math.max(0, Math.min(1, frac));
+    const s = Math.sin(Math.PI * fracClamp);
+    if (s < 0.05) return potenciaW / 0.05;
+    return potenciaW / s;
+  }
+
+  function integralSinoWmin(A, nascerMin, poenteMax, t1, t2){
+    const T = poenteMax - nascerMin;
+    if (T <= 0) return 0;
+    const k = Math.PI / T;
+    const t1c = Math.max(nascerMin, Math.min(poenteMax, t1));
+    const t2c = Math.max(nascerMin, Math.min(poenteMax, t2));
+    if (t2c <= t1c) return 0;
+    const F = (t) => (-A / k) * Math.cos(k * (t - nascerMin));
+    return F(t2c) - F(t1c);
+  }
+
+  function estimarEnergiaDiaKwh(pontos, nascerMin, poenteMax){
+    if (!pontos || pontos.length === 0) return null;
+    let totalWmin = 0;
+
+    const primeiro = pontos[0];
+    const Aini = amplitudeSino(primeiro.potencia_w, primeiro.minutos, nascerMin, poenteMax);
+    totalWmin += integralSinoWmin(Aini, nascerMin, poenteMax, nascerMin, primeiro.minutos);
+
+    for (let i=0; i<pontos.length-1; i++){
+      const a = pontos[i], b = pontos[i+1];
+      const gap = b.minutos - a.minutos;
+      if (gap <= 0) continue;
+      if (gap <= 90){
+        totalWmin += (a.potencia_w + b.potencia_w) / 2 * gap;
+      } else {
+        const Aa = amplitudeSino(a.potencia_w, a.minutos, nascerMin, poenteMax);
+        const Ab = amplitudeSino(b.potencia_w, b.minutos, nascerMin, poenteMax);
+        const A = (Aa + Ab) / 2;
+        totalWmin += integralSinoWmin(A, nascerMin, poenteMax, a.minutos, b.minutos);
+      }
+    }
+
+    const ultimo = pontos[pontos.length-1];
+    const Afim = amplitudeSino(ultimo.potencia_w, ultimo.minutos, nascerMin, poenteMax);
+    totalWmin += integralSinoWmin(Afim, nascerMin, poenteMax, ultimo.minutos, poenteMax);
+
+    return totalWmin / 60 / 1000;
+  }
+
+  function horaParaMinutos(horaStr){
+    const [h,m] = horaStr.split(":").map(Number);
+    return h*60+m;
+  }
+
+  function hojeISO(){
+    const d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+  }
+  function horaAgora(){
+    const d = new Date();
+    return String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0") + ":" + String(d.getSeconds()).padStart(2,"0");
+  }
+
+  // ============================================================
+  // BANCO (Firestore)
+  // ============================================================
+
+  async function salvarLeitura(metrics, quem, dia, hora){
+    if (!db) return;
+    await db.collection("dias").doc(dia).collection("leituras").add({
+      hora, ...metrics, quem: quem || "",
+    });
+
+    if (metrics.potencia_w > 50){
+      const minutosAgora = horaParaMinutos(hora);
+      const perfilRef = db.collection("config").doc("perfil");
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(perfilRef);
+        const atual = snap.exists ? snap.data() : {};
+        const novoNascer = Math.min(atual.nascer_min != null ? atual.nascer_min : 360, minutosAgora);
+        const novoPoente = Math.max(atual.poente_max != null ? atual.poente_max : 1140, minutosAgora);
+        tx.set(perfilRef, { nascer_min: novoNascer, poente_max: novoPoente });
+      });
+    }
+  }
+
+  async function carregarPerfil(){
+    if (!db) return { nascer_min: 360, poente_max: 1140 };
+    const snap = await db.collection("config").doc("perfil").get();
+    if (snap.exists){
+      const d = snap.data();
+      return { nascer_min: d.nascer_min != null ? d.nascer_min : 360, poente_max: d.poente_max != null ? d.poente_max : 1140 };
+    }
+    return { nascer_min: 360, poente_max: 1140 };
+  }
+
+  function renderizarFeedEEstimativa(leituras, perfil){
+    const feedEl = document.getElementById("feed-hoje");
+    const kwhEl = document.getElementById("hoje-kwh");
+    const detalheEl = document.getElementById("hoje-detalhe");
+    const avisoEl = document.getElementById("aviso-estimativa");
+
+    if (!leituras.length){
+      feedEl.innerHTML = '<p class="vazio">Nenhuma leitura ainda hoje.</p>';
+      kwhEl.innerHTML = "&mdash;<small> kWh</small>";
+      detalheEl.textContent = "ainda sem leitura hoje";
+      avisoEl.hidden = true;
+      return;
+    }
+
+    feedEl.innerHTML = "";
+    leituras.slice().reverse().forEach((l) => {
+      const div = document.createElement("div");
+      div.className = "feed-item";
+      div.innerHTML = `<span>${l.hora}${l.quem ? ' &middot; <span class="quem">'+escaparHtml(l.quem)+'</span>' : ''}</span><span class="pot">${Math.round(l.potencia_w)} W</span>`;
+      feedEl.appendChild(div);
+    });
+
+    const pontos = leituras.map(l => ({ minutos: horaParaMinutos(l.hora), potencia_w: l.potencia_w }));
+    const estimativa = estimarEnergiaDiaKwh(pontos, perfil.nascer_min, perfil.poente_max);
+    kwhEl.innerHTML = (estimativa != null ? estimativa.toFixed(2) : "&mdash;") + "<small> kWh</small>";
+    detalheEl.textContent = leituras.length + (leituras.length === 1 ? " leitura hoje" : " leituras hoje");
+    avisoEl.hidden = false;
+  }
+
+  function escaparHtml(s){
+    const d = document.createElement("div");
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  let unsubHoje = null;
+  function assinarLeiturasHoje(){
+    if (!db) return;
+    if (unsubHoje) unsubHoje();
+    const dia = hojeISO();
+    unsubHoje = db.collection("dias").doc(dia).collection("leituras").orderBy("hora", "asc").limit(200)
+      .onSnapshot(async (snap) => {
+        const leituras = snap.docs.map(d => d.data());
+        const perfil = await carregarPerfil();
+        renderizarFeedEEstimativa(leituras, perfil);
+      }, (err) => console.error("erro assinando leituras de hoje:", err));
+  }
+
+  async function salvarFechamento(mes, kwh, valor, obs){
+    if (!db) return;
+    await db.collection("fechamentos").doc(mes).set({
+      kwh_concessionaria: kwh, valor_reais: valor, observacao: obs || "",
+      atualizado_em: new Date().toISOString(),
+    });
+  }
+
+  async function carregarComparativoMensal(){
+    if (!db) return [];
+    const diasSnap = await db.collection("dias").limit(400).get();
+    const fechSnap = await db.collection("fechamentos").limit(60).get();
+    const perfil = await carregarPerfil();
+
+    const nossoPorMes = {};
+    for (const doc of diasSnap.docs){
+      const dia = doc.id;
+      const mes = dia.slice(0,7);
+      const leiturasSnap = await db.collection("dias").doc(dia).collection("leituras").orderBy("hora","asc").limit(200).get();
+      const leituras = leiturasSnap.docs.map(d => d.data());
+      if (!leituras.length) continue;
+      const pontos = leituras.map(l => ({ minutos: horaParaMinutos(l.hora), potencia_w: l.potencia_w }));
+      const kwhDia = estimarEnergiaDiaKwh(pontos, perfil.nascer_min, perfil.poente_max) || 0;
+      nossoPorMes[mes] = (nossoPorMes[mes] || 0) + kwhDia;
+    }
+
+    const fechamentos = {};
+    for (const doc of fechSnap.docs) fechamentos[doc.id] = doc.data();
+
+    const todosMeses = Array.from(new Set([...Object.keys(nossoPorMes), ...Object.keys(fechamentos)])).sort().reverse();
+    return todosMeses.map(mes => {
+      const nosso = nossoPorMes[mes] || 0;
+      const fech = fechamentos[mes];
+      const conc = fech ? fech.kwh_concessionaria : null;
+      return {
+        mes, nosso: Math.round(nosso*100)/100, conc,
+        diferenca: conc != null ? Math.round((nosso-conc)*100)/100 : null,
+      };
+    });
+  }
+
+  function renderizarTabelaMeses(linhas){
+    const tbody = document.getElementById("tabela-meses");
+    if (!linhas.length){
+      tbody.innerHTML = '<tr><td colspan="4" class="vazio">Nenhum dado ainda.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = linhas.map(l => `
+      <tr>
+        <td>${l.mes}</td>
+        <td>${l.nosso}</td>
+        <td>${l.conc != null ? l.conc : "—"}</td>
+        <td class="${l.diferenca != null ? (Math.abs(l.diferenca) < 15 ? 'dif-ok' : 'dif-alta') : ''}">${l.diferenca != null ? l.diferenca : "—"}</td>
+      </tr>
+    `).join("");
+  }
+
+  // ============================================================
+  // UI
+  // ============================================================
+
+  function trocarTela(qual){
+    document.getElementById("tela-ler").hidden = qual !== "ler";
+    document.getElementById("tela-mes").hidden = qual !== "mes";
+    document.getElementById("nav-ler").classList.toggle("ativo", qual === "ler");
+    document.getElementById("nav-mes").classList.toggle("ativo", qual === "mes");
+    if (qual === "mes") atualizarTelaMes();
+  }
+
+  async function atualizarTelaMes(){
+    document.getElementById("tabela-meses").innerHTML = '<tr><td colspan="4" class="vazio">Carregando...</td></tr>';
+    const linhas = await carregarComparativoMensal();
+    renderizarTabelaMeses(linhas);
+  }
+
+  function setStatus(msg, classe){
+    const el = document.getElementById("status-linha");
+    el.textContent = msg;
+    el.className = "status-linha" + (classe ? " " + classe : "");
+  }
+
+  async function aoClicarLer(){
+    const btn = document.getElementById("btn-ler");
+    const btnTexto = document.getElementById("btn-ler-texto");
+    const resultadoEl = document.getElementById("resultado");
+
+    if (!navigator.bluetooth){
+      setStatus("Seu navegador nao suporta Bluetooth. Use o Chrome no Android.", "erro");
+      return;
+    }
+
+    btn.disabled = true;
+    btn.classList.add("carregando");
+    btnTexto.textContent = "Conectando...";
+    setStatus("Escolha o inversor na lista que vai aparecer...");
+
+    try {
+      const metrics = await lerInversorUmaVez();
+
+      document.getElementById("r-potencia").textContent = Math.round(metrics.potencia_w);
+      document.getElementById("r-tensao").textContent = metrics.tensao_v.toFixed(1);
+      document.getElementById("r-corrente").textContent = metrics.corrente_a.toFixed(1);
+      document.getElementById("r-pv1").textContent = Math.round(metrics.pv1_potencia_w);
+      resultadoEl.hidden = false;
+
+      const nome = document.getElementById("campo-nome").value.trim();
+      try { localStorage.setItem("leitor_solar_nome", nome); } catch(e){}
+
+      await salvarLeitura(metrics, nome, hojeISO(), horaAgora());
+      setStatus("Leitura salva com sucesso!", "ok");
+    } catch (e) {
+      console.error(e);
+      let msg = "Erro ao ler: " + (e && e.message ? e.message : e);
+      if (e && e.name === "NotFoundError") msg = "Nenhum dispositivo selecionado.";
+      if (e && e.message === "TIMEOUT") msg = "O inversor nao respondeu a tempo. Tente ficar mais perto.";
+      setStatus(msg, "erro");
+    } finally {
+      btn.disabled = false;
+      btn.classList.remove("carregando");
+      btnTexto.textContent = "\u{1F4F6} Conectar e ler agora";
+    }
+  }
+
+  function iniciar(){
+    try {
+      const nomeSalvo = localStorage.getItem("leitor_solar_nome");
+      if (nomeSalvo) document.getElementById("campo-nome").value = nomeSalvo;
+    } catch(e){}
+
+    document.getElementById("btn-ler").addEventListener("click", aoClicarLer);
+    document.getElementById("nav-ler").addEventListener("click", () => trocarTela("ler"));
+    document.getElementById("nav-mes").addEventListener("click", () => trocarTela("mes"));
+
+    const hoje = new Date();
+    document.getElementById("f-mes").value = hoje.getFullYear() + "-" + String(hoje.getMonth()+1).padStart(2,"0");
+    document.getElementById("btn-salvar-mes").addEventListener("click", async () => {
+      const mes = document.getElementById("f-mes").value;
+      const kwh = parseFloat(document.getElementById("f-kwh").value);
+      const valor = document.getElementById("f-valor").value ? parseFloat(document.getElementById("f-valor").value) : null;
+      const obs = document.getElementById("f-obs").value;
+      const statusMes = document.getElementById("status-mes");
+      if (!mes || isNaN(kwh)){
+        statusMes.textContent = "Preenche o mes e o kWh da concessionaria.";
+        statusMes.className = "status-linha erro";
+        return;
+      }
+      try {
+        await salvarFechamento(mes, kwh, valor, obs);
+        statusMes.textContent = "Salvo!";
+        statusMes.className = "status-linha ok";
+        atualizarTelaMes();
+      } catch(e){
+        statusMes.textContent = "Erro ao salvar: " + e.message;
+        statusMes.className = "status-linha erro";
+      }
+    });
+
+    if (!navigator.bluetooth){
+      setStatus("Seu navegador nao suporta Bluetooth Web. Funciona no Chrome do Android.", "erro");
+    }
+
+    assinarLeiturasHoje();
+  }
+
+  if (document.readyState === "loading"){
+    document.addEventListener("DOMContentLoaded", iniciar);
+  } else {
+    iniciar();
+  }
+})();
+</script>
+</body>
+</html>
