@@ -287,9 +287,14 @@
       pv1_tensao_v: (regs[10801]||0)/10,
       pv1_corrente_a: (regs[10802]||0)/10,
       pv1_potencia_w: regs[10804]||0,
-      // Guarda TODOS os registradores crus lidos (mesmo os ainda nao mapeados,
-      // ex: 10510-10517) para investigar depois qual é energia hoje/total.
-      // So nao grava se vier vazio, pra nao gerar campo inutil no Firestore.
+      // Energia gerada HOJE, direto do inversor (confirmado batendo com o
+      // visor local: reg 10507 = 301 = "GHoje 30.10kWh" na tela do inversor).
+      // null (nao 0) quando o registrador nao veio, pra distinguir de "zerou".
+      energia_hoje_real_kwh: (regs[10507] != null ? regs[10507]/10 : null),
+      // Guarda TODOS os registradores crus lidos (mesmo os ainda nao mapeados)
+      // para investigar depois qual é o registrador de energia TOTAL (o
+      // visor mostra "GTotal 25649kWh", ainda nao identificado nas faixas
+      // que lemos hoje -- ver INVESTIGACAO-DATALOGGER-RENAC.md).
       ...(regs && Object.keys(regs).length ? { regs_brutos: regs } : {}),
     };
   }
@@ -459,10 +464,14 @@
     });
 
     const pontos = leituras.map(l => ({ minutos: horaParaMinutos(l.hora), potencia_w: l.potencia_w }));
+    const ultima = leituras[leituras.length - 1];
+    const valorReal = (ultima && ultima.energia_hoje_real_kwh != null) ? ultima.energia_hoje_real_kwh : null;
     const estimativa = estimarEnergiaDiaKwh(pontos, perfil.nascer_min, perfil.poente_max);
-    kwhEl.innerHTML = (estimativa != null ? estimativa.toFixed(2) : "&mdash;") + "<small> kWh</small>";
-    detalheEl.textContent = leituras.length + (leituras.length === 1 ? " leitura hoje" : " leituras hoje");
-    avisoEl.hidden = false;
+    const valorFinal = valorReal != null ? valorReal : estimativa;
+    kwhEl.innerHTML = (valorFinal != null ? valorFinal.toFixed(2) : "&mdash;") + "<small> kWh</small>";
+    detalheEl.textContent = leituras.length + (leituras.length === 1 ? " leitura hoje" : " leituras hoje")
+      + (valorReal != null ? " · valor real do inversor" : "");
+    avisoEl.hidden = (valorReal != null);
   }
 
   let unsubHoje = null;
@@ -496,8 +505,10 @@
       const leiturasSnap = await db.collection("dias").doc(dia).collection("leituras").orderBy("hora","asc").limit(200).get();
       const leituras = leiturasSnap.docs.map(d => d.data());
       if (!leituras.length) continue;
+      const ultimaDoDia = leituras[leituras.length - 1];
+      const valorRealDia = (ultimaDoDia && ultimaDoDia.energia_hoje_real_kwh != null) ? ultimaDoDia.energia_hoje_real_kwh : null;
       const pontos = leituras.map(l => ({ minutos: horaParaMinutos(l.hora), potencia_w: l.potencia_w }));
-      const kwhDia = estimarEnergiaDiaKwh(pontos, perfil.nascer_min, perfil.poente_max) || 0;
+      const kwhDia = valorRealDia != null ? valorRealDia : (estimarEnergiaDiaKwh(pontos, perfil.nascer_min, perfil.poente_max) || 0);
       nossoPorMes[mes] = (nossoPorMes[mes] || 0) + kwhDia;
     }
 
