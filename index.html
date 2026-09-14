@@ -287,6 +287,10 @@
       pv1_tensao_v: (regs[10801]||0)/10,
       pv1_corrente_a: (regs[10802]||0)/10,
       pv1_potencia_w: regs[10804]||0,
+      // Guarda TODOS os registradores crus lidos (mesmo os ainda nao mapeados,
+      // ex: 10510-10517) para investigar depois qual é energia hoje/total.
+      // So nao grava se vier vazio, pra nao gerar campo inutil no Firestore.
+      ...(regs && Object.keys(regs).length ? { regs_brutos: regs } : {}),
     };
   }
 
