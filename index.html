@@ -448,6 +448,17 @@
     return { nascer_min: 360, poente_max: 1140 };
   }
 
+  function energiaHojeDeLeitura(l){
+    if (!l) return null;
+    if (l.energia_hoje_real_kwh != null) return l.energia_hoje_real_kwh;
+    // Leituras salvas entre o dia em que regs_brutos foi ligado e o dia em
+    // que energia_hoje_real_kwh foi ligado nao tem o campo pronto, mas o
+    // registrador 10507 (energia hoje, confirmado batendo com o visor do
+    // inversor) ja estava sendo salvo dentro de regs_brutos. Usa ele direto.
+    if (l.regs_brutos && l.regs_brutos[10507] != null) return l.regs_brutos[10507] / 10;
+    return null;
+  }
+
   function minParaHora(min){
     const h = Math.floor(min/60), m = Math.round(min%60);
     return String(h).padStart(2,"0") + ":" + String(m).padStart(2,"0");
@@ -523,7 +534,7 @@
 
     const pontos = leituras.map(l => ({ minutos: horaParaMinutos(l.hora), potencia_w: l.potencia_w }));
     const ultima = leituras[leituras.length - 1];
-    const valorReal = (ultima && ultima.energia_hoje_real_kwh != null) ? ultima.energia_hoje_real_kwh : null;
+    const valorReal = energiaHojeDeLeitura(ultima);
     const estimativa = estimarEnergiaDiaKwh(pontos, perfil.nascer_min, perfil.poente_max);
     const valorFinal = valorReal != null ? valorReal : estimativa;
     kwhEl.innerHTML = (valorFinal != null ? valorFinal.toFixed(2) : "&mdash;") + "<small> kWh</small>";
@@ -565,7 +576,7 @@
       const leituras = leiturasSnap.docs.map(d => d.data());
       if (!leituras.length) continue;
       const ultimaDoDia = leituras[leituras.length - 1];
-      const valorRealDia = (ultimaDoDia && ultimaDoDia.energia_hoje_real_kwh != null) ? ultimaDoDia.energia_hoje_real_kwh : null;
+      const valorRealDia = energiaHojeDeLeitura(ultimaDoDia);
       const pontos = leituras.map(l => ({ minutos: horaParaMinutos(l.hora), potencia_w: l.potencia_w }));
       const kwhDia = valorRealDia != null ? valorRealDia : (estimarEnergiaDiaKwh(pontos, perfil.nascer_min, perfil.poente_max) || 0);
       nossoPorMes[mes] = (nossoPorMes[mes] || 0) + kwhDia;
