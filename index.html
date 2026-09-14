@@ -84,6 +84,12 @@
   .aviso-estimativa{background:var(--info-soft);color:var(--info);border-radius:10px;padding:9px 12px;
                     font-size:.76rem;margin-top:10px;line-height:1.4}
 
+  .grafico-hoje{width:100%;height:150px;margin-top:6px;overflow:visible}
+  .grafico-hoje .linha-pot{fill:none;stroke:var(--sun);stroke-width:2;vector-effect:non-scaling-stroke}
+  .grafico-hoje .ponto-pot{fill:var(--sun);stroke:var(--surface);stroke-width:1.5;vector-effect:non-scaling-stroke}
+  .grafico-hoje .grade{stroke:var(--line);stroke-width:1;vector-effect:non-scaling-stroke}
+  .grafico-hoje text{fill:var(--ink-faint);font-size:8px;font-variant-numeric:tabular-nums}
+
   .feed-item{display:flex;justify-content:space-between;align-items:baseline;padding:9px 0;
              border-bottom:1px solid var(--line);font-size:.85rem}
   .feed-item:last-child{border-bottom:none}
@@ -151,6 +157,7 @@
         <div class="v" id="hoje-kwh">&mdash;<small> kWh</small></div>
         <div class="r" id="hoje-detalhe">ainda sem leitura hoje</div>
       </div>
+      <svg id="grafico-hoje" class="grafico-hoje" viewBox="0 0 400 150" preserveAspectRatio="none" hidden></svg>
       <div class="aviso-estimativa" id="aviso-estimativa" hidden>
         Estimativa calculada a partir das leituras do dia + um modelo da curva solar
         (sobe de manha, pico ao meio-dia, desce a tarde). Quanto mais leituras ao longo
@@ -441,17 +448,68 @@
     return { nascer_min: 360, poente_max: 1140 };
   }
 
+  function minParaHora(min){
+    const h = Math.floor(min/60), m = Math.round(min%60);
+    return String(h).padStart(2,"0") + ":" + String(m).padStart(2,"0");
+  }
+
+  function renderizarGraficoHoje(svgEl, pontos, nascerMin, poenteMax){
+    if (!pontos || !pontos.length || poenteMax <= nascerMin){
+      svgEl.hidden = true;
+      svgEl.innerHTML = "";
+      return;
+    }
+    svgEl.hidden = false;
+    const w = 400, h = 150, padL = 30, padR = 8, padT = 8, padB = 18;
+    const plotW = w - padL - padR, plotH = h - padT - padB;
+    const yBase = padT + plotH;
+    const maxP = Math.max(...pontos.map(p => p.potencia_w), 0);
+    const yMax = Math.max(100, Math.ceil((maxP * 1.15) / 100) * 100);
+    const clampX = (x) => Math.max(padL, Math.min(w - padR, x));
+    const xOf = (min) => clampX(padL + ((min - nascerMin) / (poenteMax - nascerMin)) * plotW);
+    const yOf = (pw) => padT + plotH - Math.max(0, Math.min(pw, yMax)) / yMax * plotH;
+
+    const pts = pontos.slice().sort((a,b) => a.minutos - b.minutos);
+    const linePath = pts.map((p,i) => (i===0?"M":"L") + xOf(p.minutos).toFixed(1) + "," + yOf(p.potencia_w).toFixed(1)).join(" ");
+    const areaPath = linePath
+      + " L" + xOf(pts[pts.length-1].minutos).toFixed(1) + "," + yBase.toFixed(1)
+      + " L" + xOf(pts[0].minutos).toFixed(1) + "," + yBase.toFixed(1) + " Z";
+    const circles = pts.map(p =>
+      `<circle class="ponto-pot" cx="${xOf(p.minutos).toFixed(1)}" cy="${yOf(p.potencia_w).toFixed(1)}" r="3"></circle>`
+    ).join("");
+
+    svgEl.innerHTML = `
+      <defs>
+        <linearGradient id="gradPot" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="var(--sun)" stop-opacity="0.35"></stop>
+          <stop offset="100%" stop-color="var(--sun)" stop-opacity="0"></stop>
+        </linearGradient>
+      </defs>
+      <line class="grade" x1="${padL}" y1="${padT}" x2="${w-padR}" y2="${padT}" stroke-dasharray="2,3"></line>
+      <line class="grade" x1="${padL}" y1="${yBase}" x2="${w-padR}" y2="${yBase}"></line>
+      <path d="${areaPath}" fill="url(#gradPot)"></path>
+      <path class="linha-pot" d="${linePath}"></path>
+      ${circles}
+      <text x="${padL-4}" y="${padT+3}" text-anchor="end">${yMax}W</text>
+      <text x="${padL-4}" y="${yBase+3}" text-anchor="end">0</text>
+      <text x="${padL}" y="${h-4}" text-anchor="start">${minParaHora(nascerMin)}</text>
+      <text x="${w-padR}" y="${h-4}" text-anchor="end">${minParaHora(poenteMax)}</text>
+    `;
+  }
+
   function renderizarFeedEEstimativa(leituras, perfil){
     const feedEl = document.getElementById("feed-hoje");
     const kwhEl = document.getElementById("hoje-kwh");
     const detalheEl = document.getElementById("hoje-detalhe");
     const avisoEl = document.getElementById("aviso-estimativa");
+    const graficoEl = document.getElementById("grafico-hoje");
 
     if (!leituras.length){
       feedEl.innerHTML = '<p class="vazio">Nenhuma leitura ainda hoje.</p>';
       kwhEl.innerHTML = "&mdash;<small> kWh</small>";
       detalheEl.textContent = "ainda sem leitura hoje";
       avisoEl.hidden = true;
+      graficoEl.hidden = true;
       return;
     }
 
@@ -472,6 +530,7 @@
     detalheEl.textContent = leituras.length + (leituras.length === 1 ? " leitura hoje" : " leituras hoje")
       + (valorReal != null ? " · valor real do inversor" : "");
     avisoEl.hidden = (valorReal != null);
+    renderizarGraficoHoje(graficoEl, pontos, perfil.nascer_min, perfil.poente_max);
   }
 
   let unsubHoje = null;
