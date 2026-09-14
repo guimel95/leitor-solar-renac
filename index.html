@@ -455,11 +455,11 @@
 
   function renderizarGraficoHoje(svgEl, pontos, nascerMin, poenteMax){
     if (!pontos || !pontos.length || poenteMax <= nascerMin){
-      svgEl.hidden = true;
+      svgEl.setAttribute("hidden", "");
       svgEl.innerHTML = "";
       return;
     }
-    svgEl.hidden = false;
+    svgEl.removeAttribute("hidden");
     const w = 400, h = 150, padL = 30, padR = 8, padT = 8, padB = 18;
     const plotW = w - padL - padR, plotH = h - padT - padB;
     const yBase = padT + plotH;
@@ -509,7 +509,7 @@
       kwhEl.innerHTML = "&mdash;<small> kWh</small>";
       detalheEl.textContent = "ainda sem leitura hoje";
       avisoEl.hidden = true;
-      graficoEl.hidden = true;
+      graficoEl.setAttribute("hidden", "");
       return;
     }
 
