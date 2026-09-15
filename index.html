@@ -584,7 +584,9 @@
 
     const totalKwh = energiaTotalDeLeitura(ultima);
     document.getElementById("m-total").textContent =
-      totalKwh != null ? Math.round(totalKwh).toLocaleString("pt-BR") : "—";
+      // Trunca (nao arredonda) pra bater exatamente com o visor do inversor,
+      // que mostrou "GTotal 25649kWh" quando o valor real era 25649.8.
+      totalKwh != null ? Math.floor(totalKwh).toLocaleString("pt-BR") : "—";
     document.getElementById("m-potencia").textContent = Math.round(ultima.potencia_w);
     document.getElementById("m-tensao").textContent = ultima.tensao_v.toFixed(1);
     document.getElementById("m-corrente").textContent = ultima.corrente_a.toFixed(1);
