@@ -97,6 +97,8 @@
   .marcadores-grid .marc{background:var(--surface-2);border-radius:10px;padding:9px 11px}
   .marcadores-grid .marc .v{font-size:1rem;font-weight:700;color:var(--ink)}
   .marcadores-grid .marc .r{font-size:.68rem;color:var(--ink-faint);margin-top:2px}
+  .marcadores-grid .marc.destaque{background:var(--leaf-soft)}
+  .marcadores-grid .marc.destaque .v{color:var(--leaf)}
 
   .feed-item{display:flex;justify-content:space-between;align-items:baseline;padding:9px 0;
              border-bottom:1px solid var(--line);font-size:.85rem}
@@ -169,6 +171,7 @@
       <div class="marcadores-menores" id="marcadores-menores" hidden>
         <div class="marcadores-titulo" id="marcadores-titulo">Ultima leitura</div>
         <div class="marcadores-grid">
+          <div class="marc destaque"><div class="v" id="m-total">&mdash;</div><div class="r">Total gerado (kWh)</div></div>
           <div class="marc"><div class="v" id="m-potencia">&mdash;</div><div class="r">Potencia AC (W)</div></div>
           <div class="marc"><div class="v" id="m-tensao">&mdash;</div><div class="r">Tensao AC (V)</div></div>
           <div class="marc"><div class="v" id="m-corrente">&mdash;</div><div class="r">Corrente AC (A)</div></div>
@@ -310,7 +313,6 @@
       corrente_a: (regs[10519]||0)/10,
       frequencia_hz: (regs[10520]||0)/100,
       potencia_w: regs[10514]||0,
-      estado: regs[10509],
       pv1_tensao_v: (regs[10801]||0)/10,
       pv1_corrente_a: (regs[10802]||0)/10,
       pv1_potencia_w: regs[10804]||0,
@@ -318,10 +320,15 @@
       // visor local: reg 10507 = 301 = "GHoje 30.10kWh" na tela do inversor).
       // null (nao 0) quando o registrador nao veio, pra distinguir de "zerou".
       energia_hoje_real_kwh: (regs[10507] != null ? regs[10507]/10 : null),
-      // Guarda TODOS os registradores crus lidos (mesmo os ainda nao mapeados)
-      // para investigar depois qual é o registrador de energia TOTAL (o
-      // visor mostra "GTotal 25649kWh", ainda nao identificado nas faixas
-      // que lemos hoje -- ver INVESTIGACAO-DATALOGGER-RENAC.md).
+      // Energia TOTAL acumulada: valor de 32 bits em DOIS registradores,
+      // palavra alta em 10509 e baixa em 10510 (convencao Modbus normal).
+      // Confere com o visor: (3<<16 | 59890)/10 = 25649.8 -> "GTotal 25649kWh".
+      // O 10509 nao e "estado" como se pensava antes, e a palavra alta.
+      energia_total_kwh: (regs[10510] != null
+        ? (((regs[10509]||0) * 65536) + regs[10510]) / 10
+        : null),
+      // Guarda TODOS os registradores crus lidos, inclusive os ainda nao
+      // mapeados, pra permitir reanalise depois sem precisar de nova leitura.
       ...(regs && Object.keys(regs).length ? { regs_brutos: regs } : {}),
     };
   }
@@ -479,6 +486,16 @@
     return null;
   }
 
+  function energiaTotalDeLeitura(l){
+    if (!l) return null;
+    if (l.energia_total_kwh != null) return l.energia_total_kwh;
+    // Mesma logica de compatibilidade do energiaHojeDeLeitura: leituras antigas
+    // nao tem o campo pronto, mas tem os registradores crus salvos.
+    const r = l.regs_brutos;
+    if (r && r[10510] != null) return (((r[10509]||0) * 65536) + Number(r[10510])) / 10;
+    return null;
+  }
+
   function minParaHora(min){
     const h = Math.floor(min/60), m = Math.round(min%60);
     return String(h).padStart(2,"0") + ":" + String(m).padStart(2,"0");
@@ -565,6 +582,9 @@
     avisoEl.hidden = (valorReal != null);
     renderizarGraficoHoje(graficoEl, pontos, perfil.nascer_min, perfil.poente_max);
 
+    const totalKwh = energiaTotalDeLeitura(ultima);
+    document.getElementById("m-total").textContent =
+      totalKwh != null ? Math.round(totalKwh).toLocaleString("pt-BR") : "—";
     document.getElementById("m-potencia").textContent = Math.round(ultima.potencia_w);
     document.getElementById("m-tensao").textContent = ultima.tensao_v.toFixed(1);
     document.getElementById("m-corrente").textContent = ultima.corrente_a.toFixed(1);
