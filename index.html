@@ -90,6 +90,14 @@
   .grafico-hoje .grade{stroke:var(--line);stroke-width:1;vector-effect:non-scaling-stroke}
   .grafico-hoje text{fill:var(--ink-faint);font-size:8px;font-variant-numeric:tabular-nums}
 
+  .marcadores-menores{margin-top:14px}
+  .marcadores-titulo{font-size:.68rem;color:var(--ink-faint);text-transform:uppercase;
+                      letter-spacing:.05em;font-weight:600;margin-bottom:8px}
+  .marcadores-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .marcadores-grid .marc{background:var(--surface-2);border-radius:10px;padding:9px 11px}
+  .marcadores-grid .marc .v{font-size:1rem;font-weight:700;color:var(--ink)}
+  .marcadores-grid .marc .r{font-size:.68rem;color:var(--ink-faint);margin-top:2px}
+
   .feed-item{display:flex;justify-content:space-between;align-items:baseline;padding:9px 0;
              border-bottom:1px solid var(--line);font-size:.85rem}
   .feed-item:last-child{border-bottom:none}
@@ -158,6 +166,18 @@
         <div class="r" id="hoje-detalhe">ainda sem leitura hoje</div>
       </div>
       <svg id="grafico-hoje" class="grafico-hoje" viewBox="0 0 400 150" preserveAspectRatio="none" hidden></svg>
+      <div class="marcadores-menores" id="marcadores-menores" hidden>
+        <div class="marcadores-titulo" id="marcadores-titulo">Ultima leitura</div>
+        <div class="marcadores-grid">
+          <div class="marc"><div class="v" id="m-potencia">&mdash;</div><div class="r">Potencia AC (W)</div></div>
+          <div class="marc"><div class="v" id="m-tensao">&mdash;</div><div class="r">Tensao AC (V)</div></div>
+          <div class="marc"><div class="v" id="m-corrente">&mdash;</div><div class="r">Corrente AC (A)</div></div>
+          <div class="marc"><div class="v" id="m-freq">&mdash;</div><div class="r">Frequencia (Hz)</div></div>
+          <div class="marc"><div class="v" id="m-pv1-pot">&mdash;</div><div class="r">Potencia PV1 (W)</div></div>
+          <div class="marc"><div class="v" id="m-pv1-tensao">&mdash;</div><div class="r">Tensao PV1 (V)</div></div>
+          <div class="marc"><div class="v" id="m-pv1-corrente">&mdash;</div><div class="r">Corrente PV1 (A)</div></div>
+        </div>
+      </div>
       <div class="aviso-estimativa" id="aviso-estimativa" hidden>
         Estimativa calculada a partir das leituras do dia + um modelo da curva solar
         (sobe de manha, pico ao meio-dia, desce a tarde). Quanto mais leituras ao longo
@@ -514,6 +534,7 @@
     const detalheEl = document.getElementById("hoje-detalhe");
     const avisoEl = document.getElementById("aviso-estimativa");
     const graficoEl = document.getElementById("grafico-hoje");
+    const marcadoresEl = document.getElementById("marcadores-menores");
 
     if (!leituras.length){
       feedEl.innerHTML = '<p class="vazio">Nenhuma leitura ainda hoje.</p>';
@@ -521,6 +542,7 @@
       detalheEl.textContent = "ainda sem leitura hoje";
       avisoEl.hidden = true;
       graficoEl.setAttribute("hidden", "");
+      marcadoresEl.setAttribute("hidden", "");
       return;
     }
 
@@ -542,6 +564,16 @@
       + (valorReal != null ? " · valor real do inversor" : "");
     avisoEl.hidden = (valorReal != null);
     renderizarGraficoHoje(graficoEl, pontos, perfil.nascer_min, perfil.poente_max);
+
+    document.getElementById("m-potencia").textContent = Math.round(ultima.potencia_w);
+    document.getElementById("m-tensao").textContent = ultima.tensao_v.toFixed(1);
+    document.getElementById("m-corrente").textContent = ultima.corrente_a.toFixed(1);
+    document.getElementById("m-freq").textContent = ultima.frequencia_hz.toFixed(2);
+    document.getElementById("m-pv1-pot").textContent = Math.round(ultima.pv1_potencia_w);
+    document.getElementById("m-pv1-tensao").textContent = ultima.pv1_tensao_v.toFixed(1);
+    document.getElementById("m-pv1-corrente").textContent = ultima.pv1_corrente_a.toFixed(1);
+    document.getElementById("marcadores-titulo").textContent = "Ultima leitura · " + ultima.hora;
+    marcadoresEl.removeAttribute("hidden");
   }
 
   let unsubHoje = null;
